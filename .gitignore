@@ -1,0 +1,3 @@
+# ignore data and plots
+qcanalysis/data
+qcanalysis/plots

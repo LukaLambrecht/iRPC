@@ -40,9 +40,9 @@ def nan_to_num(series):
     return res
 
 def find_threshold(dev):
-    lowthreshold = np.quantile(dev, 0.2)
+    lowthreshold = np.quantile(dev, 0.1)
     highthreshold = np.quantile(dev, 0.9)
-    return (lowthreshold+highthreshold)/2.
+    return (lowthreshold+highthreshold)*0.75
 
 
 if __name__=='__main__':
@@ -52,6 +52,7 @@ if __name__=='__main__':
     parser.add_argument('--inputfile', required=True)
     parser.add_argument('--ignorefirst', default=600, type=int)
     parser.add_argument('--halfwindow', default=10, type=int)
+    parser.add_argument('--peakthreshold', default=3, type=float)
     parser.add_argument('--outputfile', default=None)
     args = parser.parse_args()
 
@@ -68,15 +69,23 @@ if __name__=='__main__':
     smoothed = smooth(data[:,1], halfwindow=args.halfwindow)
     smoothed = nan_to_num(smoothed)
     dev = np.abs(smoothed-nan_to_num(data[:,1]))
-    devsmoothed = smooth(dev, halfwindow=args.halfwindow)
+    devsmoothed = smooth(dev, args.halfwindow)
     for i in range(2*args.halfwindow):
         devsmoothed[i] = 0
         devsmoothed[-1-i] = 0
-    devquantile = find_threshold(devsmoothed)
-    try: fluctidx = np.nonzero(devsmoothed>devquantile)[0][0] - 2*args.halfwindow
+    devthreshold = find_threshold(devsmoothed)
+    fluctvalid = True
+    try: fluctidx = np.nonzero(devsmoothed>devthreshold)[0][0] - 2*args.halfwindow
     except:
         print('WARNING: could not determine index of fluctuation start, will guess...')
         fluctidx = args.ignorefirst + 600
+        fluctidx = min(fluctidx,len(data))
+        fluctvalid = False
+    if fluctidx < args.ignorefirst:
+        print('WARNING: index of fluctuation start is below ingore window, will guess...')
+        fluctidx = args.ignorefirst + 600
+        fluctidx = min(fluctidx,len(data))
+        fluctvalid = False
 
     # do linear fit in window
     linwindow = data[args.ignorefirst:fluctidx,0]
@@ -99,6 +108,26 @@ if __name__=='__main__':
     pdropstr = 'Pressure drop: {:.2f} mbar / 10 mins'.format(pdrop)
     pdropcolor = 'darkgreen' if pdrop<0.4 else 'red'
 
+    # find peaks
+    peaks = []
+    if fluctvalid:
+        fluctdevsmoothed = devsmoothed[fluctidx:]
+        peakthreshold = np.quantile(fluctdevsmoothed,0.5)*args.peakthreshold
+        peakinds = np.where(fluctdevsmoothed>peakthreshold)[0]
+        thispeak = []
+        for i,indx in enumerate(peakinds):
+            if( i==0 ):
+                thispeak.append(indx)
+                continue
+            if( indx-1 in thispeak ):
+                thispeak.append(indx)
+            if( i==len(peakinds)-1 or indx-1 not in peakinds ):
+                peaks.append(int(np.mean(thispeak)))
+                thispeak = [indx]
+                continue
+        for i,indx in enumerate(peaks):
+            peaks[i] = fluctidx + indx
+
     # make plot
     fig,axs = plt.subplots(figsize=(6,8), nrows=3, sharex=True,
             gridspec_kw={'height_ratios':(0.5,0.5,1)})
@@ -116,19 +145,28 @@ if __name__=='__main__':
     title = os.path.basename(title)
     axs[0].set_title(title, loc='left')
     
-    # second plot of deviation and threshold
-    axs[1].plot(data[:,0], devsmoothed, color='dodgerblue', label='Deviation from smoothed')
-    axs[1].plot(data[:,0], np.ones(len(dev))*devquantile, color='darkviolet', label='Threshold')
+    # second plot of deviation and thresholds
+    axs[1].plot(data[:,0], devsmoothed, color='mediumblue', label='Deviation from smoothed')
+    axs[1].plot(data[:,0], np.ones(len(dev))*devthreshold, color='darkviolet',
+            linestyle='--', label='Threshold for fluctuation')
+    if fluctvalid: axs[1].plot(data[:,0], np.ones(len(dev))*peakthreshold, color='red', 
+                     linestyle='--', label='Threshold for peak')
     axs[1].legend()
+    axs[1].set_ylim(0, axs[1].get_ylim()[1]*1.3)
     axs[1].set_ylabel('Pressure (mbar)')
 
-    # third plot with linear fit
+    # third plot with linear fit and peaks
     axs[2].plot(data[:,0], data[:,1], color='mediumblue', label='Raw data')
     axs[2].plot(linwindow, linfit, color='red', label = 'Linear fit')
     (ymin,ymax) = axs[2].get_ylim()
-    axs[2].vlines([args.ignorefirst,fluctidx], ymin, ymin + 0.6*(ymax-ymin), 
+    axs[2].set_ylim(ymin-(ymax-ymin)*0.1, ymax+(ymax-ymin)*0.2)
+    (newymin,newymax) = axs[2].get_ylim()
+    axs[2].vlines([args.ignorefirst,fluctidx], ymin, ymin + 0.8*(ymax-ymin), 
             color='grey', linestyles='--')
     axs[2].legend()
+    for peak in peaks:
+        axs[2].arrow(peak, newymin, 0, (ymin-newymin),
+                head_length=(ymin-newymin)*0.3, head_width=25, edgecolor='r', facecolor='r')
     pdroptxt = axs[2].text(0.95, 0.75, pdropstr, horizontalalignment='right',
             transform=axs[2].transAxes, color=pdropcolor)
     axs[2].set_ylabel('Pressure (mbar)')

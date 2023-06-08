@@ -11,6 +11,7 @@ if __name__=='__main__':
     parser.add_argument('--outputdir', required=True)
     parser.add_argument('--ignorefirst', default=600, type=int)
     parser.add_argument('--halfwindow', default=10, type=int)
+    parser.add_argument('--peakthreshold', default=3, type=float)
     args = parser.parse_args()
 
     # print arguments
@@ -36,6 +37,7 @@ if __name__=='__main__':
         cmd += ' --outputfile {}'.format(outputfile)
         cmd += ' --ignorefirst {}'.format(args.ignorefirst)
         cmd += ' --halfwindow {}'.format(args.halfwindow)
+        cmd += ' --peakthreshold {}'.format(args.peakthreshold)
         cmds.append(cmd)
 
     # run commands

@@ -1,3 +1,7 @@
 # ignore data and plots
 qcanalysis/data
 qcanalysis/plots
+gap_leak_and_spacer_test/data
+gap_leak_and_spacer_test/plots
+chamber_leak_test/data
+chamber_leak_test/plots
